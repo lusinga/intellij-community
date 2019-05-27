@@ -4,6 +4,7 @@ package com.intellij.idea;
 import com.intellij.Patches;
 import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory;
 import com.intellij.diagnostic.Activity;
+import com.intellij.diagnostic.LoadingPhase;
 import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.diagnostic.StartUpMeasurer.Phases;
 import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollector;
@@ -12,7 +13,6 @@ import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManager;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.application.*;
-import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.application.impl.ApplicationImpl;
@@ -32,6 +32,7 @@ import com.intellij.openapi.wm.impl.welcomeScreen.WelcomeFrame;
 import com.intellij.platform.PlatformProjectOpenProcessor;
 import com.intellij.ui.CustomProtocolHandler;
 import com.intellij.ui.Splash;
+import com.intellij.ui.mac.MacOSApplicationProvider;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.SystemProperties;
@@ -41,10 +42,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.EnumSet;
 import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 
 public class IdeaApplication {
@@ -125,6 +124,8 @@ public class IdeaApplication {
       Main.showMessage("Startup Error", "Application cannot start in headless mode", true);
       System.exit(Main.NO_GRAPHICS);
     }
+
+    LoadingPhase.setCurrentPhase(LoadingPhase.SPLASH);
 
     if (Main.isCommandLine()) {
       if (CommandLineApplication.ourInstance == null) {
@@ -294,8 +295,7 @@ public class IdeaApplication {
     }
 
     @Override
-    public void premain(String[] args) {
-    }
+    public void premain(String[] args) { }
 
     private void showSplash() {
       final ApplicationInfoEx appInfo = ApplicationInfoImpl.getShadowInstance();
@@ -360,17 +360,19 @@ public class IdeaApplication {
       }
     }
 
-    private static Project loadProjectFromExternalCommandLine(String[] args) {
+    private static Project loadProjectFromExternalCommandLine(@NotNull List<String> commandLineArgs) {
       Project project = null;
-      if (args != null && args.length > 0 && args[0] != null) {
+      if (!commandLineArgs.isEmpty() && commandLineArgs.get(0) != null) {
         LOG.info("IdeaApplication.loadProject");
-        project = CommandLineProcessor.processExternalCommandLine(Arrays.asList(args), null);
+        project = CommandLineProcessor.processExternalCommandLine(commandLineArgs, null);
       }
       return project;
     }
 
     @Override
     public void main(String[] args) {
+      if (SystemInfo.isMac) MacOSApplicationProvider.initApplication();
+
       SystemDock.updateMenu();
 
       RecentProjectsManager.getInstance();  // ensures that RecentProjectsManager app listener is added
@@ -378,13 +380,15 @@ public class IdeaApplication {
       // Event queue should not be changed during initialization of application components.
       // It also cannot be changed before initialization of application components because IdeEventQueue uses other
       // application components. So it is proper to perform replacement only here.
-      final ApplicationEx app = ApplicationManagerEx.getApplicationEx();
+      Application app = ApplicationManager.getApplication();
       WindowManagerImpl windowManager = (WindowManagerImpl)WindowManager.getInstance();
       IdeEventQueue.getInstance().setWindowManager(windowManager);
 
+      List<String> commandLineArgs = args == null || args.length == 0 ? Collections.emptyList() : Arrays.asList(args);
+
       Ref<Boolean> willOpenProject = new Ref<>(Boolean.FALSE);
       AppLifecycleListener lifecyclePublisher = app.getMessageBus().syncPublisher(AppLifecycleListener.TOPIC);
-      lifecyclePublisher.appFrameCreated(args, willOpenProject);
+      lifecyclePublisher.appFrameCreated(commandLineArgs, willOpenProject);
 
       PluginManagerCore.dumpPluginClassStatistics();
 
@@ -392,6 +396,8 @@ public class IdeaApplication {
       if (Registry.is("ide.popup.enablePopupType")) {
         System.setProperty("jbre.popupwindow.settype", "true");
       }
+
+      LoadingPhase.setCurrentPhase(LoadingPhase.FRAME_SHOWN);
 
       if (JetBrainsProtocolHandler.getCommand() != null || !willOpenProject.get()) {
         WelcomeFrame.showNow();
@@ -409,7 +415,7 @@ public class IdeaApplication {
       }
 
       TransactionGuard.submitTransaction(app, () -> {
-        Project projectFromCommandLine = myPerformProjectLoad ? loadProjectFromExternalCommandLine(args) : null;
+        Project projectFromCommandLine = myPerformProjectLoad ? loadProjectFromExternalCommandLine(commandLineArgs) : null;
         app.getMessageBus().syncPublisher(AppLifecycleListener.TOPIC).appStarting(projectFromCommandLine);
 
         //noinspection SSBasedInspection
@@ -434,6 +440,7 @@ public class IdeaApplication {
     return myArgs;
   }
 
+  @SuppressWarnings("AssignmentToStaticFieldFromInstanceMethod")
   public void disableProjectLoad() {
     myPerformProjectLoad = false;
   }

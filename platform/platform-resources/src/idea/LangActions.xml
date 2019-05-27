@@ -38,7 +38,14 @@
       <group id="GenerateFromTestCreatorsGroup" class="com.intellij.testIntegration.GenerateFromTestCreatorsGroup"/>
     </group>
 
-    <action id="ShowIntentionActions" class="com.intellij.codeInsight.intention.actions.ShowIntentionActionsAction"/>
+    <action id="ShowIntentionActions" class="com.intellij.codeInsight.intention.actions.ShowIntentionActionsAction"
+            icon="AllIcons.Actions.IntentionBulbGrey"/>
+
+    <group id="ShowIntentionsGroup" compact="true">
+      <reference ref="ShowIntentionActions"/>
+      <separator/>
+      <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+    </group>
 
     <action id="TogglePopupHints" class="com.intellij.codeInsight.daemon.impl.TogglePopupHintsAction"/>
     <action id="FindModal" class="com.intellij.openapi.editor.actions.FindAction" icon="AllIcons.Actions.Find"/>
@@ -144,6 +151,7 @@
       <separator/>
       <action id="SelectIn" class="com.intellij.ide.actions.SelectInAction"/>
       <action id="ShowNavBar" class="com.intellij.ide.navigationToolbar.ShowNavBarAction"/>
+      <action id="GotoDeclarationOnly" class="com.intellij.codeInsight.navigation.actions.GotoDeclarationOnlyAction"/>
       <action id="GotoDeclaration" class="com.intellij.codeInsight.navigation.actions.GotoDeclarationAction"/>
       <action id="GotoImplementation" class="com.intellij.codeInsight.navigation.actions.GotoImplementationAction"/>
       <action id="GotoTypeDeclaration" class="com.intellij.codeInsight.navigation.actions.GotoTypeDeclarationAction"/>
@@ -314,7 +322,7 @@
       <separator/>
       <add-to-group group-id="MainMenu" anchor="after" relative-to-action="GoToMenu"/>
     </group>
-    
+
     <group id="ParameterNameHints" popup="true">
       <action id="ShowSettingsWithAddedPattern" class="com.intellij.codeInsight.hints.ShowSettingsWithAddedPattern"/>
       <action id="ToggleInlineHintsAction" class="com.intellij.codeInsight.hints.ToggleInlineHintsAction"/>
@@ -322,7 +330,7 @@
       <separator/>
       <action id="ToggleCompletionHintsAction" class="com.intellij.codeInsight.hints.ToggleCompletionHintsAction"/>
     </group>
-    
+
     <!-- Analyze -->
     <action id="SliceBackward" class="com.intellij.slicer.SliceBackwardAction"/>
     <action id="SliceForward" class="com.intellij.slicer.SliceForwardAction"/>
@@ -506,6 +514,8 @@
       <action id="RestoreDefaultExtensionScripts" class="com.intellij.ide.extensionResources.RestoreBundledExtensionsAction"/>
       <separator/>
       <reference ref="CutCopyPasteGroup"/>
+      <action id="ProjectViewEditSource" use-shortcut-of="EditSource" class="com.intellij.ide.actions.ProjectViewEditSourceAction"
+        text="Edit Source"/>
       <reference ref="ChangesView.ApplyPatch"/>
       <separator/>
       <reference ref="FindUsages"/>
@@ -933,9 +943,9 @@
     </group>
 
     <group id="RunnerLayoutActions">
+      <action id="Runner.RestoreLayout" class="com.intellij.execution.ui.layout.actions.RestoreLayoutAction"
+              icon="AllIcons.Debugger.RestoreLayout"/>
       <group id="Runner.Layout">
-        <action id="Runner.RestoreLayout" class="com.intellij.execution.ui.layout.actions.RestoreLayoutAction"
-                icon="AllIcons.Debugger.RestoreLayout"/>
       </group>
       <group id="Runner.View.Close.Group" popup="false">
         <action id="Runner.CloseView" class="com.intellij.execution.ui.layout.actions.CloseViewAction" icon="AllIcons.Actions.Close"/>
@@ -944,8 +954,6 @@
         <action id="Runner.CloseAllUnpinnedViews" class="com.intellij.execution.ui.layout.actions.CloseAllUnpinnedViewsAction" icon="AllIcons.Actions.Close"/>
       </group>
       <group id="Runner.View.Popup">
-        <action id="Runner.MinimizeView" class="com.intellij.execution.ui.layout.actions.MinimizeViewAction" icon="AllIcons.General.HideToolWindow"/>
-        <separator/>
         <reference ref="Runner.View.Close.Group"/>
         <separator/>
         <group id="Runner.Focus">
@@ -955,7 +963,6 @@
 
 
       <group id="Runner.View.Toolbar">
-        <reference ref="Runner.MinimizeView"/>
         <reference ref="Runner.CloseView"/>
       </group>
     </group>
@@ -1023,6 +1030,8 @@
     <group>
       <action class="com.intellij.execution.testframework.sm.runner.history.actions.ImportTestsGroup"
               text="Import Test Results" icon="AllIcons.ToolbarDecorator.Import" id="ImportTests"/>
+      <action class="com.intellij.execution.testframework.sm.runner.history.actions.ImportTestsFromFileAction"
+              text="Import Test From File" id="ImportTestsFromFile"/>
       <add-to-group group-id="RunMenu" anchor="after" relative-to-action="editRunConfigurations"/>
     </group>
 
@@ -1169,7 +1178,19 @@
     </group>
 
     <group id="ServiceViewTreeToolbar">
-      <group id="ServiceViewTreeSettings" popup="true" text="Settings" icon="AllIcons.General.Settings"
+      <group id="ServiceView.GroupBy" popup="true" text="Group By" icon="AllIcons.Actions.GroupBy"
+             class="com.intellij.ide.actions.NonEmptyActionGroup">
+        <action id="ServiceView.GroupByType" class="com.intellij.execution.services.GroupByTypeAction"
+                text="Type"/>
+      </group>
+      <separator/>
+      <action id="ServiceView.ShowInNewTab" class="com.intellij.execution.services.ShowInNewTabAction"
+              text="Show in New Tab" icon="AllIcons.Actions.OpenNewTab"/>
+      <action id="ServiceView.FlattenServices" class="com.intellij.execution.services.FlattenServicesAction"
+              text="Flatten Services" icon="AllIcons.Actions.ListFiles"/>
+      <action id="ServiceView.SplitByType" class="com.intellij.execution.services.SplitByTypeAction"
+              text="Split By Type" icon="AllIcons.Modules.Split"/>
+      <group id="ServiceView.TreeSettings" popup="true" text="Settings" icon="AllIcons.General.Settings"
              class="com.intellij.ide.actions.NonEmptyActionGroup"/>
     </group>
     <group id="ServiceViewNodeToolbar">
@@ -1179,6 +1200,9 @@
     <group id="ServiceViewNodePopup">
       <group class="com.intellij.execution.services.ServiceViewActionProvider$ItemPopupActionGroup"/>
       <separator/>
+      <reference id="ServiceView.ShowInNewTab"/>
+      <reference id="ServiceView.FlattenServices"/>
+      <reference id="ServiceView.SplitByType"/>
     </group>
 
     <action id="RenameFile" class="com.intellij.refactoring.actions.RenameFileAction">

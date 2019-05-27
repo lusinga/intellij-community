@@ -12,6 +12,9 @@ import java.util.List;
 @Presentation(icon = "AllIcons.Nodes.Plugin", typeName = "Plugin")
 @Stubbed
 public interface IdeaPlugin extends DomElement {
+
+  String TAG_NAME = "idea-plugin";
+
   @Nullable
   String getPluginId();
 
@@ -71,6 +74,7 @@ public interface IdeaPlugin extends DomElement {
 
 
   @NotNull
+  @Stubbed
   IdeaVersion getIdeaVersion();
 
 
@@ -137,8 +141,16 @@ public interface IdeaPlugin extends DomElement {
   Actions addActions();
 
 
+  /**
+   * @deprecated not used anymore
+   */
+  @Deprecated
   @NotNull
   List<Helpset> getHelpsets();
 
+  /**
+   * @deprecated not used anymore
+   */
+  @Deprecated
   Helpset addHelpset();
 }

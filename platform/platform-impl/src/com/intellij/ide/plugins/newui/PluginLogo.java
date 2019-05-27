@@ -1,10 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins.newui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.InstalledPluginsState;
-import com.intellij.ide.plugins.PluginManagerConfigurableNew;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.openapi.application.*;
@@ -23,10 +22,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -40,16 +41,20 @@ public class PluginLogo {
   private static final String CACHE_DIR = "imageCache";
   private static final String PLUGIN_ICON = "pluginIcon.svg";
   private static final String PLUGIN_ICON_DARK = "pluginIcon_dark.svg";
+  private static final int PLUGIN_ICON_SIZE = 40;
+  private static final int PLUGIN_ICON_SIZE_SCALED = 80;
 
   private static final Map<String, Pair<PluginLogoIconProvider, PluginLogoIconProvider>> ICONS = new HashMap<>();
   private static PluginLogoIconProvider Default;
   private static List<Pair<IdeaPluginDescriptor, LazyPluginLogoIcon>> myPrepareToLoad;
 
   static {
-    LafManager.getInstance().addLafManagerListener(_0 -> {
-      Default = null;
-      HiDPIPluginLogoIcon.clearCache();
-    });
+    if (!GraphicsEnvironment.isHeadless()) {
+      LafManager.getInstance().addLafManagerListener(_0 -> {
+        Default = null;
+        HiDPIPluginLogoIcon.clearCache();
+      });
+    }
   }
 
   @NotNull
@@ -163,6 +168,7 @@ public class PluginLogo {
       }
       else {
         tryLoadJarIcons(idPlugin, lazyIcon, path, true);
+        return;
       }
       putIcon(idPlugin, lazyIcon, null, null);
       return;
@@ -248,18 +254,12 @@ public class PluginLogo {
     try {
       Url url = Urls.newFromEncoded(ApplicationInfoImpl.getShadowInstance().getPluginManagerUrl() +
                                     "/api/icon?pluginId=" + URLUtil.encodeURIComponent(idPlugin) + theme);
-
-      HttpRequests.request(url).forceHttps(PluginManagerConfigurableNew.forceHttps()).productNameAsUserAgent()
-        .connect(request -> {
-          request.getConnection();
-          request.saveToFile(file, null);
-          return null;
-        });
+      HttpRequests.request(url).productNameAsUserAgent().saveToFile(file, null);
     }
     catch (HttpRequests.HttpStatusException ignore) {
     }
     catch (IOException e) {
-      LOG.error(e);
+      LOG.info(e);
     }
   }
 
@@ -297,15 +297,23 @@ public class PluginLogo {
   }
 
   @NotNull
-  static String getIconFileName(boolean light) {
+  public static String getIconFileName(boolean light) {
     return PluginManagerCore.META_INF + (light ? PLUGIN_ICON : PLUGIN_ICON_DARK);
   }
 
+  public static int height() {
+    return PLUGIN_ICON_SIZE;
+  }
+
+  public static int width() {
+    return PLUGIN_ICON_SIZE;
+  }
+
   @Nullable
-  private static PluginLogoIconProvider loadFileIcon(@NotNull ThrowableComputable<InputStream, IOException> provider) {
+  private static PluginLogoIconProvider loadFileIcon(@NotNull ThrowableComputable<? extends InputStream, ? extends IOException> provider) {
     try {
-      Icon logo40 = HiDPIPluginLogoIcon.loadSVG(provider.compute(), 40, 40);
-      Icon logo80 = HiDPIPluginLogoIcon.loadSVG(provider.compute(), 80, 80);
+      Icon logo40 = HiDPIPluginLogoIcon.loadSVG(provider.compute(), PLUGIN_ICON_SIZE, PLUGIN_ICON_SIZE);
+      Icon logo80 = HiDPIPluginLogoIcon.loadSVG(provider.compute(), PLUGIN_ICON_SIZE_SCALED, PLUGIN_ICON_SIZE_SCALED);
 
       return new HiDPIPluginLogoIcon(logo40, logo80);
     }

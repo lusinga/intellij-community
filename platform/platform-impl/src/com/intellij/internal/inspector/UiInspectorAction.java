@@ -44,7 +44,6 @@ import com.intellij.util.ExceptionUtil;
 import com.intellij.util.Function;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.ReflectionUtil;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.tree.TreeUtil;
 import net.miginfocom.layout.*;
@@ -74,7 +73,6 @@ import java.util.List;
 import java.util.*;
 
 import static com.intellij.openapi.actionSystem.ex.CustomComponentAction.ACTION_KEY;
-import static java.util.Locale.ENGLISH;
 
 public class UiInspectorAction extends ToggleAction implements DumbAware {
   private static final String CLICK_INFO = "CLICK_INFO";
@@ -130,7 +128,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
   private static class InspectorWindow extends JDialog {
     private InspectorTable myInspectorTable;
     private Component myComponent;
-    private List<PropertyBean> myInfo;
+    private List<? extends PropertyBean> myInfo;
     private final Component myInitialComponent;
     private HighlightComponent myHighlightComponent;
     private final HierarchyTree myHierarchyTree;
@@ -198,7 +196,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
         }
 
         @Override
-        public void onComponentChanged(List<PropertyBean> info) {
+        public void onComponentChanged(List<? extends PropertyBean> info) {
           boolean wasHighlighted = myHighlightComponent != null;
           setHighlightingEnabled(false);
           switchInfo(info);
@@ -260,7 +258,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
       myWrapperPanel.repaint();
     }
 
-    private void switchInfo(@NotNull List<PropertyBean> clickInfo) {
+    private void switchInfo(@NotNull List<? extends PropertyBean> clickInfo) {
       myComponent = null;
       myInfo = clickInfo;
       setTitle("Click Info");
@@ -524,7 +522,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
       }
     }
 
-    public abstract void onComponentChanged(List<PropertyBean> info);
+    public abstract void onComponentChanged(List<? extends PropertyBean> info);
 
     public abstract void onComponentChanged(Component c);
 
@@ -633,7 +631,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
     InspectorTableModel myModel;
     DimensionsComponent myDimensionComponent;
 
-    private InspectorTable(@NotNull final List<PropertyBean> clickInfo) {
+    private InspectorTable(@NotNull final List<? extends PropertyBean> clickInfo) {
        myModel = new InspectorTableModel(clickInfo);
        init(null);
     }
@@ -848,7 +846,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
   }
 
   private static class ValueCellRenderer implements TableCellRenderer {
-    private static final Map<Class, Renderer> RENDERERS = ContainerUtil.newHashMap();
+    private static final Map<Class, Renderer> RENDERERS = new HashMap<>();
 
     static {
       RENDERERS.put(Point.class, new PointRenderer());
@@ -959,7 +957,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
       sb.append(" argb:0x");
       String hex = Integer.toHexString(value.getRGB());
       for (int i = hex.length(); i < 8; i++) sb.append('0');
-      sb.append(hex.toUpperCase(ENGLISH));
+      sb.append(StringUtil.toUpperCase(hex));
 
       if (value instanceof UIResource) sb.append(" UIResource");
       setText(sb.toString());
@@ -1140,7 +1138,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
       "getText", "isEditable", "getIcon",
       "getVisibleRect", "getLayout",
       "getAlignmentX", "getAlignmentY",
-      "getTooltipText", "getToolTipText",
+      "getTooltipText", "getToolTipText", "cursor",
       "isShowing", "isEnabled", "isVisible", "isDoubleBuffered",
       "isFocusable", "isFocusCycleRoot", "isFocusOwner",
       "isValid", "isDisplayable", "isLightweight"
@@ -1165,7 +1163,7 @@ public class UiInspectorAction extends ToggleAction implements DumbAware {
     );
 
     final Component myComponent;
-    final List<PropertyBean> myProperties = ContainerUtil.newArrayList();
+    final List<PropertyBean> myProperties = new ArrayList<>();
 
     InspectorTableModel(@NotNull List<? extends PropertyBean> clickInfo) {
       myComponent = null;

@@ -812,6 +812,14 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
     myIsEmpty = false;
     if (myManager == null) return;
 
+    myText = text;
+    myDecoratedText = decorate(text);
+    setElement(element);
+
+    showHint(viewRect, ref);
+  }
+
+  protected void showHint(@NotNull Rectangle viewRect, @Nullable String ref) {
     String refToUse;
     Rectangle viewRectToUse;
     if (DocumentationManagerProtocol.KEEP_SCROLLING_POSITION_REF.equals(ref)) {
@@ -825,17 +833,12 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
 
     updateControlState();
 
-    setElement(element);
-
     highlightLink(-1);
 
-    myDecoratedText = decorate(text);
     myEditorPane.setText(myDecoratedText);
     applyFontProps();
 
     showHint();
-
-    myText = text;
 
     //noinspection SSBasedInspection
     SwingUtilities.invokeLater(() -> {
@@ -920,7 +923,7 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
     }
     Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
     JBPopup popup = PopupUtil.getPopupContainerFor(focusOwner);
-    if (popup != null && popup != myHint) {
+    if (popup != null && popup != myHint && !popup.isDisposed()) {
       return popup.getContent();
     }
     return null;
@@ -968,6 +971,8 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
   private String decorate(String text) {
     text = StringUtil.replaceIgnoreCase(text, "</html>", "");
     text = StringUtil.replaceIgnoreCase(text, "</body>", "");
+    text = StringUtil.replaceIgnoreCase(text, DocumentationMarkup.SECTIONS_START + DocumentationMarkup.SECTIONS_END, "");
+    text = StringUtil.replaceIgnoreCase(text, DocumentationMarkup.SECTIONS_START + "<p>" + DocumentationMarkup.SECTIONS_END, "");
     boolean hasContent = text.contains(DocumentationMarkup.CONTENT_START);
     if (!hasContent) {
       if (!text.contains(DocumentationMarkup.DEFINITION_START)) {
@@ -1012,7 +1017,7 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
       return null;
     }
 
-    String title = manager.getTitle(element);
+    String title = StringUtil.escapeXmlEntities(manager.getTitle(element));
     if (externalUrl == null) {
       List<String> urls = provider.getUrlFor(element, originalElement);
       if (urls != null) {
@@ -1483,6 +1488,10 @@ public class DocumentationComponent extends JPanel implements Disposable, DataPr
 
   public String getText() {
     return myText;
+  }
+
+  public String getDecoratedText() {
+    return myDecoratedText;
   }
 
   @Override

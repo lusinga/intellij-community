@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.build.output;
 
 import com.intellij.build.FilePosition;
@@ -7,14 +7,13 @@ import com.intellij.build.events.MessageEvent;
 import com.intellij.build.events.impl.FileMessageEventImpl;
 import com.intellij.build.events.impl.MessageEventImpl;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.SystemProperties;
-import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -26,6 +25,7 @@ public class JavacOutputParser implements BuildOutputParser {
 
   private static final char COLON = ':';
   private static final String WARNING_PREFIX = "warning:"; // default value
+  private static final String ERROR_PREFIX = "error:";
 
   @Override
   public boolean parse(@NotNull String line, @NotNull BuildOutputInstantReader reader, @NotNull Consumer<? super BuildEvent> messageConsumer) {
@@ -83,6 +83,9 @@ public class JavacOutputParser implements BuildOutputParser {
           if (text.startsWith(WARNING_PREFIX)) {
             text = text.substring(WARNING_PREFIX.length()).trim();
             kind = MessageEvent.Kind.WARNING;
+          } else if (text.startsWith(ERROR_PREFIX)) {
+            text = text.substring(ERROR_PREFIX.length()).trim();
+            kind = MessageEvent.Kind.ERROR;
           }
 
           // Only slurp up line pointer (^) information if this is really javac
@@ -91,26 +94,27 @@ public class JavacOutputParser implements BuildOutputParser {
             return false;
           }
 
-          List<String> messageList = ContainerUtil.newArrayList();
+          BuildOutputCollector outputCollector = new BuildOutputCollector(reader);
+          List<String> messageList = new ArrayList<>();
           messageList.add(text);
           int column; // 0-based.
           String prevLine = null;
           do {
-            String nextLine = reader.readLine();
+            String nextLine = outputCollector.readLine();
             if (nextLine == null) {
               return false;
             }
             if (nextLine.trim().equals("^")) {
               column = nextLine.indexOf('^');
-              String messageEnd = reader.readLine();
+              String messageEnd = outputCollector.readLine();
 
               while (isMessageEnd(messageEnd)) {
                 messageList.add(messageEnd.trim());
-                messageEnd = reader.readLine();
+                messageEnd = outputCollector.readLine();
               }
 
               if (messageEnd != null) {
-                reader.pushBack();
+                outputCollector.pushBack();
               }
               break;
             }
@@ -122,10 +126,10 @@ public class JavacOutputParser implements BuildOutputParser {
           while (true);
 
           if (column >= 0) {
-            messageList = convertMessages(messageList);
-            String msgText = StringUtil.join(messageList, SystemProperties.getLineSeparator());
-            messageConsumer.accept(new FileMessageEventImpl(reader.getParentEventId(), kind, COMPILER_MESSAGES_GROUP, msgText, msgText,
-                                                            new FilePosition(file, lineNumber - 1, column)));
+            String message = StringUtil.join(convertMessages(messageList), "\n");
+            String detailedMessage = line + "\n" + outputCollector.getOutput();
+            messageConsumer.accept(new FileMessageEventImpl(reader.getParentEventId(), kind, COMPILER_MESSAGES_GROUP,
+                                                            message, detailedMessage, new FilePosition(file, lineNumber - 1, column)));
             return true;
           }
         }

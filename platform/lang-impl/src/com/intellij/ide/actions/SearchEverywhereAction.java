@@ -278,7 +278,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
     myNonProjectCheckBox.addActionListener(e -> {
       if (showAll.get() != myNonProjectCheckBox.isSelected()) {
         showAll.set(!showAll.get());
-        final JTextField editor = UIUtil.findComponentOfType(myBalloon.getContent(), JTextField.class);
+        final JTextField editor = myBalloon.isDisposed() ? null : UIUtil.findComponentOfType(myBalloon.getContent(), JTextField.class);
         if (editor != null) {
           final String pattern = editor.getText();
           myAlarm.cancelAllRequests();
@@ -575,14 +575,12 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
       SearchEverywhereManager seManager = SearchEverywhereManager.getInstance(e.getProject());
       String searchProviderID = SearchEverywhereManagerImpl.ALL_CONTRIBUTORS_GROUP_ID;
       if (seManager.isShown()) {
-        if (searchProviderID.equals(seManager.getShownContributorID())) {
-          seManager.setShowNonProjectItems(!seManager.isShowNonProjectItems());
+        if (searchProviderID.equals(seManager.getSelectedContributorID())) {
+          seManager.toggleEverywhereFilter();
         }
         else {
-          seManager.setShownContributor(searchProviderID);
-          FeatureUsageData data = SearchEverywhereUsageTriggerCollector
-            .createData(searchProviderID)
-            .addInputEvent(e);
+          seManager.setSelectedContributor(searchProviderID);
+          FeatureUsageData data = SearchEverywhereUsageTriggerCollector.createData(searchProviderID).addInputEvent(e);
           SearchEverywhereUsageTriggerCollector.trigger(e.getProject(), SearchEverywhereUsageTriggerCollector.TAB_SWITCHED, data);
         }
         return;
@@ -2035,7 +2033,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
                 final AWTEvent event = IdeEventQueue.getInstance().getTrueCurrentEvent();
                 if (event instanceof MouseEvent) {
                   final Component comp = ((MouseEvent)event).getComponent();
-                  if (balloon != null && UIUtil.getWindow(comp) == UIUtil.getWindow(balloon.getContent())) {
+                  if (balloon != null && !balloon.isDisposed() && UIUtil.getWindow(comp) == UIUtil.getWindow(balloon.getContent())) {
                     return false;
                   }
                 }

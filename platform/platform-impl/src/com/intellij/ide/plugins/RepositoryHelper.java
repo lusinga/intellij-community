@@ -2,7 +2,6 @@
 package com.intellij.ide.plugins;
 
 import com.intellij.ide.IdeBundle;
-import com.intellij.idea.IdeaApplication;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.PermanentInstallationID;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
@@ -48,7 +47,7 @@ public class RepositoryHelper {
    */
   @NotNull
   public static List<String> getPluginHosts() {
-    List<String> hosts = ContainerUtil.newArrayList(UpdateSettings.getInstance().getPluginHosts());
+    List<String> hosts = new ArrayList<>(UpdateSettings.getInstance().getPluginHosts());
     ContainerUtil.addIfNotNull(hosts, ApplicationInfoEx.getInstanceEx().getBuiltinPluginsUrl());
     hosts.add(null);  // main plugin repository
     return hosts;
@@ -58,15 +57,20 @@ public class RepositoryHelper {
    * Loads list of plugins, compatible with a current build, from all configured repositories
    */
   @NotNull
-  public static List<IdeaPluginDescriptor> loadPluginsFromAllRepositories(@Nullable ProgressIndicator indicator) throws IOException {
+  public static List<IdeaPluginDescriptor> loadPluginsFromAllRepositories(@Nullable ProgressIndicator indicator) {
     List<IdeaPluginDescriptor> result = new ArrayList<>();
     Set<String> addedPluginIds = new HashSet<>();
     for (String host : getPluginHosts()) {
-      List<IdeaPluginDescriptor> plugins = loadPlugins(host, indicator);
-      for (IdeaPluginDescriptor plugin : plugins) {
-        if (addedPluginIds.add(plugin.getPluginId().getIdString())) {
-          result.add(plugin);
+      try {
+        List<IdeaPluginDescriptor> plugins = loadPlugins(host, indicator);
+        for (IdeaPluginDescriptor plugin : plugins) {
+          if (addedPluginIds.add(plugin.getPluginId().getIdString())) {
+            result.add(plugin);
+          }
         }
+      }
+      catch (IOException e) {
+        LOG.info("Couldn't load plugins from " + (host == null ? "main repository" : host), e);
       }
     }
     return result;
@@ -87,17 +91,7 @@ public class RepositoryHelper {
 
   @NotNull
   public static List<IdeaPluginDescriptor> loadPlugins(@Nullable String repositoryUrl,
-                                                       @Nullable BuildNumber buildnumber,
-                                                       @Nullable ProgressIndicator indicator) throws IOException {
-    boolean hostEligibleForHttpsForcing = repositoryUrl == null || repositoryUrl.equals(ApplicationInfoEx.getInstanceEx().getBuiltinPluginsUrl());
-    boolean forceHttps = hostEligibleForHttpsForcing && IdeaApplication.isLoaded() && UpdateSettings.getInstance().canUseSecureConnection();
-    return loadPlugins(repositoryUrl, buildnumber, forceHttps, indicator);
-  }
-
-  @NotNull
-  public static List<IdeaPluginDescriptor> loadPlugins(@Nullable String repositoryUrl,
                                                        @Nullable BuildNumber build,
-                                                       boolean forceHttps,
                                                        @Nullable ProgressIndicator indicator) throws IOException {
     String eTag;
     File pluginListFile;
@@ -124,7 +118,6 @@ public class RepositoryHelper {
 
     Url finalUrl = url;
     List<PluginNode> descriptors = HttpRequests.request(url)
-      .forceHttps(forceHttps)
       .tuner(connection -> connection.setRequestProperty("If-None-Match", eTag))
       .productNameAsUserAgent()
       .connect(request -> {

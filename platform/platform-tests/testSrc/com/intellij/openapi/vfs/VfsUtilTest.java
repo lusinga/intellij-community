@@ -1,20 +1,26 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ex.PathManagerEx;
+import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.project.impl.ProjectManagerImpl;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.IoTestUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile;
+import com.intellij.openapi.vfs.newvfs.impl.VirtualDirectoryImpl;
+import com.intellij.testFramework.PlatformLiteFixture;
 import com.intellij.testFramework.UsefulTestCase;
 import com.intellij.testFramework.fixtures.BareTestFixtureTestCase;
 import com.intellij.testFramework.rules.TempDirectory;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.Semaphore;
+import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.NotNull;
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -25,6 +31,10 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.Assert.*;
 
 public class VfsUtilTest extends BareTestFixtureTestCase {
   @Rule public TempDirectory myTempDir = new TempDirectory();
@@ -88,26 +98,22 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
 
   @Test
   public void testDirAttributeRefreshes() throws IOException {
-    File tempDir = myTempDir.newFolder();
-    VirtualFile vDir = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(tempDir);
-    assertNotNull(vDir);
-    assertTrue(vDir.isDirectory());
-
-    File file = FileUtil.createTempFile(tempDir, "xxx", "yyy", true);
-    assertNotNull(file);
+    File file = myTempDir.newFile("test");
     VirtualFile vFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
     assertNotNull(vFile);
     assertFalse(vFile.isDirectory());
 
-    boolean deleted = file.delete();
-    assertTrue(deleted);
-    boolean created = file.mkdir();
-    assertTrue(created);
-    assertTrue(file.exists());
-
+    assertTrue(file.delete());
+    assertTrue(file.mkdir());
     VirtualFile vFile2 = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
     assertNotNull(vFile2);
     assertTrue(vFile2.isDirectory());
+
+    assertTrue(file.delete());
+    assertTrue(file.createNewFile());
+    VirtualFile vFile3 = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
+    assertNotNull(vFile3);
+    assertFalse(vFile3.isDirectory());
   }
 
   @Test
@@ -236,8 +242,11 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
     assertNull(vDir.findChild("xxx//extFiles"));
   }
 
-  @Test public void testRenameDuringFullRefresh() throws IOException { doRenameAndRefreshTest(true); }
-  @Test public void testRenameDuringPartialRefresh() throws IOException { doRenameAndRefreshTest(false); }
+  @Test
+  public void testRenameDuringFullRefresh() throws IOException { doRenameAndRefreshTest(true); }
+
+  @Test
+  public void testRenameDuringPartialRefresh() throws IOException { doRenameAndRefreshTest(false); }
 
   private void doRenameAndRefreshTest(boolean full) throws IOException {
     assertFalse(ApplicationManager.getApplication().isDispatchThread());
@@ -270,5 +279,52 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
     }
 
     assertTrue(semaphore.waitFor(60000));
+  }
+
+  @Test(timeout = 20_000)
+  public void testRefreshAndEspeciallyScanChildrenMustBeRunOutsideOfReadActionToAvoidUILags() throws Exception {
+    AtomicBoolean getAllExcludedCalled = new AtomicBoolean();
+    ProjectManagerImpl test = new ProjectManagerImpl() {
+      @NotNull
+      @Override
+      public String[] getAllExcludedUrls() {
+        getAllExcludedCalled.set(true);
+        assertFalse(ApplicationManager.getApplication().isReadAccessAllowed());
+        return super.getAllExcludedUrls();
+      }
+    };
+    ProjectManager old = ProjectManager.getInstance();
+    PlatformLiteFixture.registerComponentInstance(ApplicationManager.getApplication(), ProjectManager.class, test);
+    assertSame(test, ProjectManager.getInstance());
+    try {
+      File temp = myTempDir.newFolder();
+      VirtualDirectoryImpl vTemp = (VirtualDirectoryImpl)LocalFileSystem.getInstance().refreshAndFindFileByIoFile(temp);
+      assertNotNull(vTemp);
+      vTemp.getChildren(); //to force full dir refresh?!
+
+      File d = new File(temp, "d");
+      assertTrue(d.mkdir());
+      File d1 = new File(d, "d1");
+      assertTrue(d1.mkdir());
+      File x = new File(d1, "x.txt");
+      assertTrue(x.createNewFile());
+
+      assertFalse(ApplicationManager.getApplication().isDispatchThread());
+      VfsUtil.markDirty(true, false, vTemp);
+      CountDownLatch refreshed = new CountDownLatch(1);
+      LocalFileSystem.getInstance().refreshFiles(Collections.singletonList(vTemp), false, true, refreshed::countDown);
+
+      while (refreshed.getCount() != 0) {
+        UIUtil.pump();
+      }
+      assertTrue(getAllExcludedCalled.get());
+    }
+    finally {
+      if (old != null) {
+        PlatformLiteFixture.registerComponentInstance(ApplicationManager.getApplication(), ProjectManager.class, old);
+      }
+      assertSame(old, ProjectManager.getInstance());
+      WriteAction.runAndWait(() -> Disposer.dispose(test));
+    }
   }
 }

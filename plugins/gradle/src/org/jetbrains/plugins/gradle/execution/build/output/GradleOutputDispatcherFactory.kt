@@ -3,7 +3,9 @@ package org.jetbrains.plugins.gradle.execution.build.output
 
 import com.intellij.build.BuildProgressListener
 import com.intellij.build.events.BuildEvent
+import com.intellij.build.events.DuplicateMessageAware
 import com.intellij.build.events.StartEvent
+import com.intellij.build.events.impl.OutputBuildEventImpl
 import com.intellij.build.output.BuildOutputInstantReaderImpl
 import com.intellij.build.output.BuildOutputParser
 import com.intellij.build.output.LineProcessor
@@ -20,13 +22,16 @@ class GradleOutputDispatcherFactory : ExternalSystemOutputDispatcherFactory {
 
   override fun create(buildId: Any,
                       buildProgressListener: BuildProgressListener,
+                      appendOutputToMainConsole: Boolean,
                       parsers: List<BuildOutputParser>): ExternalSystemOutputMessageDispatcher {
-    return GradleOutputMessageDispatcher(buildId, buildProgressListener, parsers)
+    return GradleOutputMessageDispatcher(buildId, buildProgressListener, appendOutputToMainConsole, parsers)
   }
 
   private class GradleOutputMessageDispatcher(private val buildId: Any,
                                               private val myBuildProgressListener: BuildProgressListener,
+                                              private val appendOutputToMainConsole: Boolean,
                                               private val parsers: List<BuildOutputParser>) : ExternalSystemOutputMessageDispatcher {
+    override var stdOut: Boolean = true
     private val lineProcessor: LineProcessor
     private val myRootReader: BuildOutputInstantReaderImpl
     private var myCurrentReader: BuildOutputInstantReaderImpl
@@ -34,7 +39,8 @@ class GradleOutputDispatcherFactory : ExternalSystemOutputDispatcherFactory {
     private val tasksEventIds = mutableMapOf<String, Any>()
 
     init {
-      myRootReader = BuildOutputInstantReaderImpl(buildId, BuildProgressListener {
+      val deferredRootEvents = mutableListOf<BuildEvent>()
+      myRootReader = object : BuildOutputInstantReaderImpl(buildId, BuildProgressListener {
         var buildEvent = it
         val parentId = buildEvent.parentId
         if (parentId != buildId && parentId is String) {
@@ -43,20 +49,42 @@ class GradleOutputDispatcherFactory : ExternalSystemOutputDispatcherFactory {
             buildEvent = BuildEventInvocationHandler.wrap(it, taskEventId)
           }
         }
-        myBuildProgressListener.onEvent(buildEvent)
-      }, parsers)
+        if (buildEvent is DuplicateMessageAware) {
+          deferredRootEvents += buildEvent
+        }
+        else {
+          myBuildProgressListener.onEvent(buildEvent)
+        }
+      }, parsers) {
+        override fun close() {
+          closeAndGetFuture().whenComplete { _, _ -> deferredRootEvents.forEach { myBuildProgressListener.onEvent(it) } }
+        }
+      }
+      var isBuildException = false
       myCurrentReader = myRootReader
       lineProcessor = object : LineProcessor() {
         override fun process(line: String) {
           val cleanLine = removeLoggerPrefix(line)
           if (cleanLine.startsWith("> Task :")) {
+            isBuildException = false
             val taskName = cleanLine.removePrefix("> Task ").substringBefore(' ')
             myCurrentReader = tasksOutputReaders[taskName] ?: myRootReader
           }
-          else if (cleanLine.startsWith("> Configure") || cleanLine == "FAILURE: Build failed with an exception.") {
+          else if (cleanLine.startsWith("> Configure") ||
+                   cleanLine.startsWith("FAILURE: Build failed") ||
+                   cleanLine.startsWith("CONFIGURE SUCCESSFUL") ||
+                   cleanLine.startsWith("BUILD SUCCESSFUL")) {
+            isBuildException = false
             myCurrentReader = myRootReader
           }
+          if (cleanLine == "* Exception is:") isBuildException = true
+          if (isBuildException && myCurrentReader == myRootReader) return
+
           myCurrentReader.appendln(cleanLine)
+          if (myCurrentReader != myRootReader) {
+            val parentEventId = myCurrentReader.parentEventId
+            myBuildProgressListener.onEvent(OutputBuildEventImpl(parentEventId, line + '\n', stdOut))
+          }
         }
       }
     }
@@ -74,22 +102,31 @@ class GradleOutputDispatcherFactory : ExternalSystemOutputDispatcherFactory {
 
     override fun close() {
       lineProcessor.close()
-      tasksOutputReaders.forEach { _, reader -> reader.close() }
+      tasksOutputReaders.forEach { (_, reader) -> reader.close() }
       myRootReader.close()
       tasksOutputReaders.clear()
     }
 
     override fun append(csq: CharSequence): Appendable {
+      if (appendOutputToMainConsole) {
+        myBuildProgressListener.onEvent(OutputBuildEventImpl(buildId, csq.toString(), stdOut))
+      }
       lineProcessor.append(csq)
       return this
     }
 
     override fun append(csq: CharSequence, start: Int, end: Int): Appendable {
+      if (appendOutputToMainConsole) {
+        myBuildProgressListener.onEvent(OutputBuildEventImpl(buildId, csq.subSequence(start, end).toString(), stdOut))
+      }
       lineProcessor.append(csq, start, end)
       return this
     }
 
     override fun append(c: Char): Appendable {
+      if (appendOutputToMainConsole) {
+        myBuildProgressListener.onEvent(OutputBuildEventImpl(buildId, c.toString(), stdOut))
+      }
       lineProcessor.append(c)
       return this
     }

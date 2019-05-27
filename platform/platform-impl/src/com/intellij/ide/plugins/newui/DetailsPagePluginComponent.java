@@ -341,7 +341,7 @@ public class DetailsPagePluginComponent extends OpaquePanel {
       errorPanel.add(errorMessage);
 
       Ref<String> enableAction = new Ref<>();
-      errorMessage.setText(PluginManagerConfigurableNew.getErrorMessage(myPluginsModel, myPlugin, enableAction));
+      errorMessage.setText(myPluginsModel.getErrorMessage(myPlugin, enableAction));
 
       if (!enableAction.isNull()) {
         LinkLabel<Object> errorAction = new LinkLabel<>("Enable", null);
@@ -372,7 +372,7 @@ public class DetailsPagePluginComponent extends OpaquePanel {
       return;
     }
 
-    button.addActionListener(e -> myPluginsModel.installOrUpdatePlugin(myPlugin, install));
+    button.addActionListener(e -> myPluginsModel.installOrUpdatePlugin(myPlugin, install ? null : myPlugin));
 
     if (MyPluginModel.isInstallingOrUpdate(myPlugin)) {
       showProgress(false);

@@ -17,7 +17,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.JDOMUtil;
-import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -92,8 +91,6 @@ public abstract class UsefulTestCase extends TestCase {
   private final List<String> myPathsToKeep = new ArrayList<>();
 
   private String myTempDir;
-
-  static final Key<String> CREATION_PLACE = Key.create("CREATION_PLACE");
 
   private static final String DEFAULT_SETTINGS_EXTERNALIZED;
   private static final CodeInsightSettings defaultSettings = new CodeInsightSettings();
@@ -355,15 +352,14 @@ public abstract class UsefulTestCase extends TestCase {
   }
 
   protected void invokeTestRunnable(@NotNull Runnable runnable) throws Exception {
-    IdeaTestExecutionPolicy policy = IdeaTestExecutionPolicy.current();
-    if (policy != null && !policy.runInDispatchThread()) {
-      runnable.run();
-    }
-    else {
+    if (runInDispatchThread()) {
       EdtTestUtilKt.runInEdtAndWait(() -> {
         runnable.run();
         return null;
       });
+    }
+    else {
+      runnable.run();
     }
   }
 
@@ -899,8 +895,7 @@ public abstract class UsefulTestCase extends TestCase {
     }
   }
 
-  private static void checkCodeInsightSettingsEqual(@NotNull CodeInsightSettings oldSettings,
-                                                    @NotNull CodeInsightSettings settings) {
+  private static void checkCodeInsightSettingsEqual(@NotNull CodeInsightSettings oldSettings, @NotNull CodeInsightSettings settings) {
     if (!oldSettings.equals(settings)) {
       Element newS = new Element("temp");
       settings.writeExternal(newS);

@@ -43,7 +43,7 @@ import static com.jetbrains.python.psi.PyUtil.as;
 /**
  * @author yole
  */
-public class PyBlock implements ASTBlock, ReadOnlyBlockContainer {
+public class PyBlock implements ASTBlock {
   private static final TokenSet ourListElementTypes = TokenSet.create(PyElementTypes.LIST_LITERAL_EXPRESSION,
                                                                       PyElementTypes.LIST_COMP_EXPRESSION,
                                                                       PyElementTypes.DICT_LITERAL_EXPRESSION,
@@ -442,6 +442,11 @@ public class PyBlock implements ASTBlock, ReadOnlyBlockContainer {
       prev = prev.getTreePrev();
     }
 
+    // Don't wrap anything inside f-string fragments
+    if (TreeUtil.findParent(child, PyElementTypes.FSTRING_FRAGMENT) != null) {
+      childWrap = Wrap.createWrap(WrapType.NONE, false);
+    }
+    
     return new PyBlock(this, child, childAlignment, childIndent, childWrap, myContext);
   }
 

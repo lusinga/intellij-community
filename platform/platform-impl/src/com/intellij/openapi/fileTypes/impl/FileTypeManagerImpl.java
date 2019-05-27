@@ -10,7 +10,6 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
-import com.intellij.openapi.components.BaseComponent;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
@@ -70,7 +69,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @State(name = "FileTypeManager", storages = @Storage("filetypes.xml"), additionalExportFile = FileTypeManagerImpl.FILE_SPEC )
-public class FileTypeManagerImpl extends FileTypeManagerEx implements PersistentStateComponent<Element>, Disposable, BaseComponent {
+public class FileTypeManagerImpl extends FileTypeManagerEx implements PersistentStateComponent<Element>, Disposable {
   private static final Logger LOG = Logger.getInstance(FileTypeManagerImpl.class);
 
   // You must update all existing default configurations accordingly
@@ -475,7 +474,7 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements Persistent
   }
 
   @Override
-  public void initComponent() {
+  public void initializeComponent() {
     if (!myUnresolvedMappings.isEmpty()) {
       for (StandardFileType pair : myStandardFileTypes.values()) {
         registerReDetectedMappings(pair);
@@ -1273,6 +1272,13 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements Persistent
     return pair != null && pair.getSecond();
   }
 
+  public void approveRemoval(@NotNull FileNameMatcher matcher) {
+    FileType type = getExtensionMap().findAssociatedFileType(matcher);
+    if (type != null) {
+      myRemovedMappings.put(matcher, Pair.create(type, true));
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Helper methods
   // -------------------------------------------------------------------------
@@ -1436,7 +1442,8 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements Persistent
     return myPatternsTable;
   }
 
-  void setPatternsTable(@NotNull Set<? extends FileType> fileTypes, @NotNull FileTypeAssocTable<FileType> assocTable) {
+  void setPatternsTable(@NotNull Set<FileType> fileTypes, @NotNull FileTypeAssocTable<FileType> assocTable) {
+    Map<FileNameMatcher, FileType> removedMappings = getExtensionMap().getRemovedMappings(assocTable, fileTypes);
     fireBeforeFileTypesChanged();
     for (FileType existing : getRegisteredFileTypes()) {
       if (!fileTypes.contains(existing)) {
@@ -1451,6 +1458,16 @@ public class FileTypeManagerImpl extends FileTypeManagerEx implements Persistent
     }
     myPatternsTable = assocTable.copy();
     fireFileTypesChanged();
+
+    Iterator<Map.Entry<FileNameMatcher, Pair<FileType, Boolean>>> iterator = myRemovedMappings.entrySet().iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<FileNameMatcher, Pair<FileType, Boolean>> entry = iterator.next();
+      if (assocTable.isAssociatedWith(entry.getValue().first, entry.getKey()))
+        iterator.remove();
+    }
+    for (FileNameMatcher matcher : removedMappings.keySet()) {
+      myRemovedMappings.put(matcher, Pair.create(removedMappings.get(matcher), true));
+    }
   }
 
   public void associate(@NotNull FileType fileType, @NotNull FileNameMatcher matcher, boolean fireChange) {

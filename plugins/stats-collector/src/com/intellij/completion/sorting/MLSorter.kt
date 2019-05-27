@@ -16,6 +16,7 @@ import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.util.PsiUtilCore
 import com.intellij.stats.completion.CompletionUtil
+import com.intellij.stats.completion.RelevanceUtil
 import com.intellij.stats.completion.prefixLength
 import com.intellij.stats.experiment.EmulatedExperiment
 import com.intellij.stats.experiment.WebServiceStatus
@@ -109,8 +110,8 @@ class MLSorter : CompletionFinalSorter() {
     return items
       .mapIndexed { position, lookupElement ->
         positionsBefore[lookupElement] = position
-        val relevance = buildRelevanceMap(lookupElement, relevanceObjects[lookupElement], lookup.prefixLength(),
-                                          position, parameters) ?: return null
+        val relevance = buildRelevanceMap(lookupElement, relevanceObjects[lookupElement],
+                                          lookup.prefixLength(), position, parameters) ?: return null
         val rank: Double = calculateElementRank(ranker, lookupElement, position, relevance, userFactors, prefixLength) ?: return null
 
         lookupElement to rank
@@ -121,25 +122,13 @@ class MLSorter : CompletionFinalSorter() {
   }
 
   private fun buildRelevanceMap(lookupElement: LookupElement,
-                                relevanceObjects: List<Pair<String, Any>>?,
+                                relevanceObjects: List<Pair<String, Any?>>?,
                                 prefixLength: Int,
                                 position: Int,
                                 parameters: CompletionParameters): Map<String, Any>? {
     if (relevanceObjects == null) return null
 
-    val relevanceMap = mutableMapOf<String, Any>()
-    for (pair in relevanceObjects) {
-      val name = pair.first
-      val value = pair.second
-      if (value == null) continue
-      if (name == "proximity") {
-        val proximityMap = FeatureUtils.asProximityMap(value.toString())
-        relevanceMap.putAll(proximityMap)
-      }
-      else {
-        relevanceMap[name] = value
-      }
-    }
+    val relevanceMap = RelevanceUtil.asRelevanceMap(relevanceObjects)
 
     relevanceMap["position"] = position
     relevanceMap["query_length"] = prefixLength
@@ -152,7 +141,7 @@ class MLSorter : CompletionFinalSorter() {
   }
 
   private fun Iterable<LookupElement>.addDiagnosticsIfNeeded(positionsBefore: Map<LookupElement, Int>): Iterable<LookupElement> {
-    if (Registry.`is`("java.completion.show.ml.ranking.diff")) {
+    if (Registry.`is`("completion.stats.show.ml.ranking.diff")) {
       return this.mapIndexed { position, element -> MyMovedLookupElement(element, positionsBefore.getValue(element), position) }
     }
 

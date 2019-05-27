@@ -12,7 +12,7 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import java.io.Closeable
 import java.util.*
-import java.util.concurrent.Future
+import java.util.concurrent.CompletableFuture
 
 /**
  * @author Vladislav.Soroka
@@ -83,7 +83,7 @@ open class BuildOutputInstantReaderImpl(private val parentEventId: Any,
     closeAndGetFuture()
   }
 
-  fun closeAndGetFuture(): Future<Unit> {
+  fun closeAndGetFuture(): CompletableFuture<Unit> {
     appendedLineProcessor.close()
     outputLinesChannel.close()
     return CoroutineScope(Dispatchers.Default).future {
@@ -181,4 +181,33 @@ open class BuildOutputInstantReaderImpl(private val parentEventId: Any,
     @TestOnly
     fun getMaxLinesBufferSize() = 50
   }
+}
+
+@ApiStatus.Experimental
+class BuildOutputCollector(private val reader: BuildOutputInstantReader) : BuildOutputInstantReader {
+  private val readLines = LinkedList<String>()
+  override fun getParentEventId(): Any = reader.parentEventId
+
+  override fun readLine(): String? {
+    val line = reader.readLine()
+    if (line != null) {
+      readLines.add(line)
+    }
+    return line
+  }
+
+  override fun pushBack() {
+    reader.pushBack()
+    readLines.pollLast()
+  }
+
+  override fun pushBack(numberOfLines: Int) {
+    reader.pushBack(numberOfLines)
+    repeat(numberOfLines) { readLines.pollLast() ?: return@repeat }
+
+  }
+
+  override fun getCurrentLine(): String = reader.currentLine
+
+  fun getOutput(): String = readLines.joinToString(separator = "\n")
 }

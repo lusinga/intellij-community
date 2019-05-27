@@ -491,6 +491,14 @@ public class InlineMethodTest extends LightRefactoringTestCase {
     doTest();
   }
   
+  public void testSpecializeEnumName() {
+    doTest();
+  }
+  
+  public void testSpecializeEnumValueOf() {
+    doTest();
+  }
+  
   public void testBooleanModelSimple() {
     doTestAssertBadReturn();
   }
@@ -513,6 +521,10 @@ public class InlineMethodTest extends LightRefactoringTestCase {
 
   public void testBooleanModelFinalCondition() {
     doTestAssertBadReturn();
+  }
+  
+  public void testInvertMethod() {
+    doTest();
   }
 
   @Override

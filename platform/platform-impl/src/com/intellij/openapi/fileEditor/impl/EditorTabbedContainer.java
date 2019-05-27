@@ -352,10 +352,6 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
     }
   }
 
-  void setPaintBlocked(boolean blocked) {
-    myTabs.getPresentation().setPaintBlocked(blocked, true);
-  }
-
   private static class MyQueryable implements Queryable {
     private final TabInfo myTab;
 
@@ -680,7 +676,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
     }
   }
 
-  private class EditorTabs extends JBEditorTabs {
+  private class EditorTabs extends SameHeightTabs {
     private EditorTabs(Project project) {
       super(project, ActionManager.getInstance(), IdeFocusManager.getInstance(project), EditorTabbedContainer.this);
       IdeEventQueue.getInstance().addDispatcher(createFocusDispatcher(), this);
@@ -703,26 +699,12 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
 
     @Override
     protected JBEditorTabPainter createTabPainter() {
-      return JBTabPainter.Companion.getEDITOR();
+      return JBTabPainter.getEDITOR();
     }
 
     @Override
-    protected JBTabsBackgroundAndBorder createTabBorder() {
-      return new JBEditorTabsBackgroundAndBorder(this);
-    }
-
-    @Override
-    protected TabLabel createTabLabel(TabInfo info) {
-      return new TabLabel(this, info) {
-        @Override
-        public Dimension getPreferredSize() {
-          Dimension size = super.getPreferredSize();
-
-          Insets insets = getLayoutInsets();
-
-          return new Dimension(size.width, TabsUtil.getTabsHeight(JBUI.CurrentTheme.ToolWindow.tabVerticalPadding()) - insets.top - insets.bottom);
-        }
-      };
+    protected JBTabsBorder createTabBorder() {
+      return new JBEditorTabsBorder(this);
     }
 
     private boolean active = false;
@@ -742,7 +724,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
 
             if(newActive != active) {
               active = newActive;
-              updateTabs();
+              revalidateAndRepaint();
             }
           });
         }

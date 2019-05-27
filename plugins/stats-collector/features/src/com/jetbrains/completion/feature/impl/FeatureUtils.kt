@@ -31,16 +31,4 @@ object FeatureUtils {
 
     fun getOtherCategoryFeatureName(name: String): String = "$name=$OTHER"
     fun getUndefinedFeatureName(name: String): String = "$name=$UNDEFINED"
-
-    /**
-     * Proximity features now came like [samePsiFile=true, openedInEditor=false], need to convert to proper map
-     */
-    fun asProximityMap(proximityValues: String): Map<String, Any> {
-        val items = proximityValues.replace("[", "").replace("]", "").split(",")
-
-        return items.map {
-            val (key, value) = it.trim().split("=")
-            "prox_$key" to value
-        }.toMap()
-    }
 }

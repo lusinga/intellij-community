@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
 import com.intellij.codeInsight.*;
@@ -277,7 +277,8 @@ public class JavaCompletionUtil {
 
     List<PsiType> runtimeQualifiers = getQualifierCastTypes(javaReference, parameters);
     if (!runtimeQualifiers.isEmpty()) {
-      PsiType composite = PsiIntersectionType.createIntersection(JBIterable.of(plainQualifier).append(runtimeQualifiers).toList());
+      PsiType[] conjuncts = JBIterable.of(plainQualifier).append(runtimeQualifiers).toArray(PsiType.EMPTY_ARRAY);
+      PsiType composite = PsiIntersectionType.createIntersection(false, conjuncts);
       PsiElement ctx = createContextWithXxxVariable(element, composite);
       javaReference = createReference("xxx.xxx", ctx);
       processor.setQualifierType(composite);
@@ -316,7 +317,7 @@ public class JavaCompletionUtil {
 
     if (javaReference instanceof PsiJavaCodeReferenceElement) {
       PsiElement refQualifier = ((PsiJavaCodeReferenceElement)javaReference).getQualifier();
-      if (refQualifier == null && PsiTreeUtil.getParentOfType(element, PsiPackageStatement.class) == null) {
+      if (refQualifier == null && PsiTreeUtil.getParentOfType(element, PsiPackageStatement.class, PsiImportStatementBase.class) == null) {
         final StaticMemberProcessor memberProcessor = new JavaStaticMemberProcessor(parameters);
         memberProcessor.processMembersOfRegisteredClasses(matcher, (member, psiClass) -> {
           if (!mentioned.contains(member) && processor.satisfies(member, ResolveState.initial())) {
@@ -583,7 +584,7 @@ public class JavaCompletionUtil {
   }
 
   public static LinkedHashSet<String> getAllLookupStrings(@NotNull PsiMember member) {
-    LinkedHashSet<String> allLookupStrings = ContainerUtil.newLinkedHashSet();
+    LinkedHashSet<String> allLookupStrings = new LinkedHashSet<>();
     String name = member.getName();
     allLookupStrings.add(name);
     PsiClass containingClass = member.getContainingClass();
@@ -835,7 +836,7 @@ public class JavaCompletionUtil {
     if (afterTailOffset > tailOffset &&
         tailOffset > caretOffset &&
         TabOutScopesTracker.getInstance().removeScopeEndingAt(editor, caretOffset) > 0) {
-      TabOutScopesTracker.getInstance().registerEmptyScope(editor, caretOffset, afterTailOffset - caretOffset);
+      TabOutScopesTracker.getInstance().registerEmptyScope(editor, caretOffset, afterTailOffset);
     }
     return true;
   }

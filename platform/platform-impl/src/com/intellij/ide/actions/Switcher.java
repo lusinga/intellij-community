@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
 import com.intellij.featureStatistics.FeatureUsageTracker;
@@ -84,7 +84,7 @@ import static javax.swing.KeyStroke.getKeyStroke;
 public class Switcher extends AnAction implements DumbAware {
   private static final Key<SwitcherPanel> SWITCHER_KEY = Key.create("SWITCHER_KEY");
   private static final Color SEPARATOR_COLOR = JBColor.namedColor("Popup.separatorColor", new JBColor(Gray.xC0, Gray.x4B));
-  private static final String TOGGLE_CHECK_BOX_ACTION_ID = "SwitcherToggleCheckBox";
+  private static final String TOGGLE_CHECK_BOX_ACTION_ID = "SwitcherRecentEditedChangedToggleCheckBox";
 
   private static final int MINIMUM_HEIGHT = JBUI.scale(100);
 
@@ -145,7 +145,10 @@ public class Switcher extends AnAction implements DumbAware {
     if (switcher != null) {
       boolean sameShortcut = Comparing.equal(switcher.myTitle, title);
       if (sameShortcut) {
-        if (switcher.isCheckboxMode() && !ToggleCheckBoxAction.isEnabled()) {
+        if (switcher.isCheckboxMode() &&
+            (!ToggleCheckBoxAction.isEnabled() ||
+             e.getInputEvent() instanceof KeyEvent &&
+             KeymapUtil.isEventForAction(((KeyEvent)e.getInputEvent()), TOGGLE_CHECK_BOX_ACTION_ID))) {
           switcher.toggleShowEditedFiles();
         }
         else {
@@ -338,7 +341,7 @@ public class Switcher extends AnAction implements DumbAware {
       twManager = ToolWindowManager.getInstance(project);
       CollectionListModel<ToolWindow> twModel = new CollectionListModel<>();
       List<ActivateToolWindowAction> actions = ToolWindowsGroup.getToolWindowActions(project, true);
-      List<ToolWindow> windows = ContainerUtil.newArrayList();
+      List<ToolWindow> windows = new ArrayList<>();
       for (ActivateToolWindowAction action : actions) {
         ToolWindow tw = twManager.getToolWindow(action.getToolWindowId());
         if (tw.isAvailable()) {
@@ -620,7 +623,7 @@ public class Switcher extends AnAction implements DumbAware {
 
     @NotNull
     private static <T> JBList<T> createList(CollectionListModel<T> baseModel,
-                                            Function<T, String> namer,
+                                            Function<? super T, String> namer,
                                             SwitcherSpeedSearch speedSearch,
                                             boolean pinned) {
       ListModel<T> listModel;
@@ -651,8 +654,7 @@ public class Switcher extends AnAction implements DumbAware {
     }
 
     private Container getPopupFocusAncestor() {
-      JComponent content = myPopup.getContent();
-      return content == null ? null : content.getFocusCycleRootAncestor();
+      return myPopup.isDisposed() ? null : myPopup.getContent().getFocusCycleRootAncestor();
     }
 
     @NotNull
@@ -1004,14 +1006,14 @@ public class Switcher extends AnAction implements DumbAware {
     void toggleShowEditedFiles() {
       myShowOnlyEditedFilesCheckBox.doClick();
     }
-    
+
     void setShowOnlyEditedFiles(boolean onlyEdited) {
       if (myShowOnlyEditedFilesCheckBox.isSelected() != onlyEdited) {
         myShowOnlyEditedFilesCheckBox.setSelected(onlyEdited);
       }
-      
+
       final boolean listWasSelected = files.getSelectedIndex() != -1;
-      
+
       final Pair<List<FileInfo>, Integer> filesAndSelection = getFilesToShowAndSelectionIndex(
         project, collectFiles(project, onlyEdited), toolWindows.getModel().getSize(), isPinnedMode());
       final int selectionIndex = filesAndSelection.getSecond();
@@ -1323,7 +1325,7 @@ public class Switcher extends AnAction implements DumbAware {
              + "</html>";
     }
   }
-  
+
   private static class VirtualFilesRenderer extends ColoredListCellRenderer<FileInfo> {
     private final SwitcherPanel mySwitcherPanel;
     boolean open;

@@ -4,13 +4,12 @@ package org.jetbrains.plugins.gradle.statistics
 import com.intellij.internal.statistic.beans.UsageDescriptor
 import com.intellij.internal.statistic.service.fus.collectors.ProjectUsagesCollector
 import com.intellij.internal.statistic.utils.getBooleanUsage
-import com.intellij.internal.statistic.utils.getCountingUsage
 import com.intellij.internal.statistic.utils.getEnumUsage
 import com.intellij.openapi.externalSystem.statistics.ExternalSystemUsagesCollector
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Version
 import org.gradle.util.GradleVersion
-import org.jetbrains.plugins.gradle.service.settings.GradleSettingsService
+import org.jetbrains.plugins.gradle.settings.GradleProjectSettings
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 
 class GradleSettingsCollector : ProjectUsagesCollector() {
@@ -26,22 +25,19 @@ class GradleSettingsCollector : ProjectUsagesCollector() {
 
     // to have a total users base line to calculate pertentages of settings
     usages.add(getBooleanUsage("hasGradleProject", true))
-    usages.add(getCountingUsage("numberOfGradleProject", projectsSettings.size, listOf(1, 2, 3, 4, 5, 10, 20, 30, 100, 1000)))
 
     // global settings
     usages.add(getBooleanUsage("offlineWork", gradleSettings.isOfflineWork))
     usages.add(getBooleanUsage("hasCustomServiceDirectoryPath", !gradleSettings.serviceDirectoryPath.isNullOrBlank()))
     usages.add(getBooleanUsage("hasCustomGradleVmOptions", !gradleSettings.gradleVmOptions.isNullOrBlank()))
     usages.add(getBooleanUsage("showSelectiveImportDialogOnInitialImport", gradleSettings.showSelectiveImportDialogOnInitialImport()))
+    usages.add(getBooleanUsage("storeProjectFilesExternally", gradleSettings.storeProjectFilesExternally))
 
-    val settingsService = GradleSettingsService.getInstance(project)
     // project settings
     for (setting in gradleSettings.linkedProjectsSettings) {
       val projectPath = setting.externalProjectPath
-      usages.add(getBooleanUsage("isCreateEmptyContentRootDirectories", setting.isCreateEmptyContentRootDirectories))
       usages.add(getBooleanUsage("isUseQualifiedModuleNames", setting.isUseQualifiedModuleNames))
       usages.add(getBooleanUsage("createModulePerSourceSet", setting.isResolveModulePerSourceSet))
-      usages.add(getEnumUsage("storeProjectFilesExternally", setting.storeProjectFilesExternally))
       usages.add(getEnumUsage("distributionType", setting.distributionType))
 
       usages.add(getYesNoUsage("isCompositeBuilds", setting.compositeBuild != null))
@@ -57,8 +53,10 @@ class GradleSettingsCollector : ProjectUsagesCollector() {
         usages.add(UsageDescriptor("gradleVersion." + anonymizeGradleVersion(gradleVersion), 1))
       }
 
-      usages.add(getBooleanUsage("delegateBuildRun", settingsService.isDelegatedBuildEnabled(projectPath)))
-      usages.add(getEnumUsage("preferredTestRunner", settingsService.getTestRunner(projectPath)))
+      usages.add(getBooleanUsage("delegateBuildRun",
+                                 GradleProjectSettings.isDelegatedBuildEnabled(project, projectPath)))
+      usages.add(getEnumUsage("preferredTestRunner",
+                              GradleProjectSettings.getTestRunner(project, projectPath)))
     }
     return usages
   }

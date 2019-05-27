@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.impl;
 
 import com.intellij.diff.actions.impl.GoToChangePopupBuilder;
@@ -28,20 +14,22 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
-import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.List;
 
 public class CacheDiffRequestChainProcessor extends CacheDiffRequestProcessor<DiffRequestProducer> {
   private static final Logger LOG = Logger.getInstance(CacheDiffRequestChainProcessor.class);
 
   @NotNull private final DiffRequestChain myRequestChain;
+  private int myIndex;
 
   public CacheDiffRequestChainProcessor(@Nullable Project project, @NotNull DiffRequestChain requestChain) {
     super(project, requestChain);
     myRequestChain = requestChain;
+    myIndex = myRequestChain.getIndex();
 
     if (myRequestChain instanceof AsyncDiffRequestChain) {
       ((AsyncDiffRequestChain)myRequestChain).onAssigned(true);
@@ -72,9 +60,8 @@ public class CacheDiffRequestChainProcessor extends CacheDiffRequestProcessor<Di
   @Override
   protected DiffRequestProducer getCurrentRequestProvider() {
     List<? extends DiffRequestProducer> requests = myRequestChain.getRequests();
-    int index = myRequestChain.getIndex();
-    if (index < 0 || index >= requests.size()) return null;
-    return requests.get(index);
+    if (myIndex < 0 || myIndex >= requests.size()) return null;
+    return requests.get(myIndex);
   }
 
   @NotNull
@@ -100,36 +87,29 @@ public class CacheDiffRequestChainProcessor extends CacheDiffRequestProcessor<Di
   @NotNull
   @Override
   protected List<AnAction> getNavigationActions() {
-    return ContainerUtil.list(
-      new MyPrevDifferenceAction(),
-      new MyNextDifferenceAction(),
-      new MyOpenInEditorAction(),
-      Separator.getInstance(),
-      new MyPrevChangeAction(),
-      new MyNextChangeAction(),
-      createGoToChangeAction()
-    );
+    return Arrays.asList(new MyPrevDifferenceAction(), new MyNextDifferenceAction(), new MyOpenInEditorAction(), Separator.getInstance(),
+                         new MyPrevChangeAction(), new MyNextChangeAction(), createGoToChangeAction());
   }
 
   @Override
   protected boolean hasNextChange() {
-    return myRequestChain.getIndex() < myRequestChain.getRequests().size() - 1;
+    return myIndex < myRequestChain.getRequests().size() - 1;
   }
 
   @Override
   protected boolean hasPrevChange() {
-    return myRequestChain.getIndex() > 0;
+    return myIndex > 0;
   }
 
   @Override
   protected void goToNextChange(boolean fromDifferences) {
-    myRequestChain.setIndex(myRequestChain.getIndex() + 1);
+    myIndex += 1;
     updateRequest(false, fromDifferences ? ScrollToPolicy.FIRST_CHANGE : null);
   }
 
   @Override
   protected void goToPrevChange(boolean fromDifferences) {
-    myRequestChain.setIndex(myRequestChain.getIndex() - 1);
+    myIndex -= 1;
     updateRequest(false, fromDifferences ? ScrollToPolicy.LAST_CHANGE : null);
   }
 
@@ -141,17 +121,18 @@ public class CacheDiffRequestChainProcessor extends CacheDiffRequestProcessor<Di
   @NotNull
   private AnAction createGoToChangeAction() {
     return GoToChangePopupBuilder.create(myRequestChain, index -> {
-      if (index >= 0 && index != myRequestChain.getIndex()) {
-        myRequestChain.setIndex(index);
+      if (index >= 0 && index < myRequestChain.getRequests().size() && index != myIndex) {
+        myIndex = index;
         updateRequest();
       }
-    });
+    }, myIndex);
   }
 
   private class MyChangeListener implements AsyncDiffRequestChain.Listener {
     @Override
     public void onRequestsLoaded() {
       dropCaches();
+      myIndex = myRequestChain.getIndex();
       updateRequest(true);
     }
   }

@@ -44,6 +44,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Arrays;
 import java.util.List;
 
 // TODO: support merge request chains
@@ -218,17 +219,16 @@ public abstract class MergeRequestProcessor implements Disposable {
   }
 
   @NotNull
-  private static JPanel createButtonsPanel(@NotNull List<Action> actions, @Nullable JRootPane rootPane) {
+  private static JPanel createButtonsPanel(@NotNull List<? extends Action> actions, @Nullable JRootPane rootPane) {
     List<JButton> buttons = ContainerUtil.map(actions, action -> DialogWrapper.createJButtonForAction(action, rootPane));
     return DialogWrapper.layoutButtonsPanel(buttons);
   }
 
   @NotNull
-  protected DefaultActionGroup collectToolbarActions(@Nullable List<AnAction> viewerActions) {
+  protected DefaultActionGroup collectToolbarActions(@Nullable List<? extends AnAction> viewerActions) {
     DefaultActionGroup group = new DefaultActionGroup();
 
-    List<AnAction> navigationActions = ContainerUtil.list(new MyPrevDifferenceAction(),
-                                                          new MyNextDifferenceAction());
+    List<AnAction> navigationActions = Arrays.asList(new MyPrevDifferenceAction(), new MyNextDifferenceAction());
     DiffUtil.addActionBlock(group, navigationActions);
 
     DiffUtil.addActionBlock(group, viewerActions);
@@ -244,7 +244,7 @@ public abstract class MergeRequestProcessor implements Disposable {
     return group;
   }
 
-  protected void buildToolbar(@Nullable List<AnAction> viewerActions) {
+  protected void buildToolbar(@Nullable List<? extends AnAction> viewerActions) {
     ActionGroup group = collectToolbarActions(viewerActions);
     ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.DIFF_TOOLBAR, group, true);
     toolbar.setShowSeparatorTitles(true);
@@ -290,17 +290,20 @@ public abstract class MergeRequestProcessor implements Disposable {
   }
 
   private void showInvalidRequestNotification() {
-    if (!myNotificationPanel.isNull()) return;
+    ApplicationManager.getApplication().invokeLater(() -> {
+      if (myDisposed) return;
+      if (!myNotificationPanel.isNull()) return;
 
-    EditorNotificationPanel notification = new EditorNotificationPanel(LightColors.RED);
-    notification.setText("Conflict is not valid and no longer can be resolved.");
-    notification.createActionLabel("Abort Resolve", () -> {
-      applyRequestResult(MergeResult.CANCEL);
-      closeDialog();
-    });
-    myNotificationPanel.setContent(notification);
-    myMainPanel.validate();
-    myMainPanel.repaint();
+      EditorNotificationPanel notification = new EditorNotificationPanel(LightColors.RED);
+      notification.setText("Conflict is not valid and no longer can be resolved.");
+      notification.createActionLabel("Abort Resolve", () -> {
+        applyRequestResult(MergeResult.CANCEL);
+        closeDialog();
+      });
+      myNotificationPanel.setContent(notification);
+      myMainPanel.validate();
+      myMainPanel.repaint();
+    }, ModalityState.stateForComponent(myPanel));
   }
 
   @Override

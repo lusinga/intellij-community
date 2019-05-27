@@ -17,6 +17,7 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.Function;
 import com.intellij.util.IncorrectOperationException;
 import com.siyeh.ig.psiutils.ExpectedTypeUtils;
+import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -304,10 +305,6 @@ public class RedundantCastUtil {
           final PsiExpression arg = deparenthesizeExpression(args[i]);
           if (arg instanceof PsiTypeCastExpression) {
             PsiTypeCastExpression cast = (PsiTypeCastExpression)arg;
-            if (i == args.length - 1 && args.length == parameters.length && parameters[i].isVarArgs()) {
-              //do not mark cast to resolve ambiguity for calling varargs method with inexact argument
-              continue;
-            }
             final PsiType typeByParent = PsiTypesUtil.getExpectedTypeByParent(expression);
             final PsiCall newCall;
             if (typeByParent != null) {
@@ -346,6 +343,14 @@ public class RedundantCastUtil {
             }
             else {
               newResult = newCall.resolveMethodGenerics();
+            }
+
+            if (i == args.length - 1 && args.length == parameters.length && parameters[i].isVarArgs() && 
+                (ExpressionUtils.isNullLiteral(cast.getOperand()) ||
+                 oldResult instanceof MethodCandidateInfo && newResult instanceof MethodCandidateInfo && 
+                 ((MethodCandidateInfo)oldResult).getApplicabilityLevel() != ((MethodCandidateInfo)newResult).getApplicabilityLevel())) {
+              //do not mark cast to resolve ambiguity for calling varargs method with inexact argument
+              continue;
             }
 
             final PsiAnonymousClass oldAnonymousClass = expression instanceof PsiNewExpression ? ((PsiNewExpression)expression).getAnonymousClass() : null;
@@ -697,8 +702,23 @@ public class RedundantCastUtil {
             addToResults(typeCast);
           }
         }
+        else if (parent instanceof PsiBinaryExpression) {
+          PsiExpression lOperand = ((PsiBinaryExpression)parent).getLOperand();
+          PsiExpression rOperand = ((PsiBinaryExpression)parent).getROperand();
+          PsiType oppositeType = lOperand == typeCast ? rOperand != null ? rOperand.getType() : null : lOperand.getType();
+          if (oppositeType != null && TypeConversionUtil.areTypesConvertible(opType, oppositeType)) {
+            addToResults(typeCast);
+          }
+        }
         else if (TypeConversionUtil.isAssignable(castTo, opType, false) &&
                  (expectedTypeByParent == null || TypeConversionUtil.isAssignable(expectedTypeByParent, opType, false))) {
+          if (parent instanceof PsiSwitchBlock && 
+              opType instanceof PsiClassType && PsiPrimitiveType.getUnboxedType(opType) == null && !opType.equalsToText(CommonClassNames.JAVA_LANG_STRING)) {
+            PsiClass aClass = ((PsiClassType)opType).resolve();
+            if (aClass != null && !aClass.isEnum()) {
+              return;
+            }
+          }
           addToResults(typeCast);
         }
       }

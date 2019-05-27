@@ -24,7 +24,10 @@ import org.gradle.initialization.BuildLayoutParameters;
 import org.gradle.internal.nativeintegration.services.NativeServices;
 import org.gradle.process.internal.JvmOptions;
 import org.gradle.tooling.*;
+import org.gradle.tooling.events.OperationType;
 import org.gradle.tooling.internal.consumer.DefaultGradleConnector;
+import org.gradle.tooling.model.BuildIdentifier;
+import org.gradle.tooling.model.UnsupportedMethodException;
 import org.gradle.tooling.model.build.BuildEnvironment;
 import org.gradle.util.GradleVersion;
 import org.jetbrains.annotations.ApiStatus;
@@ -114,7 +117,8 @@ public class GradleExecutionHelper {
       if (buildEnvironment != null) {
         // the BuildEnvironment jvm arguments of the main build should be used for the 'buildSrc' import
         // to avoid spawning of the second gradle daemon
-        List<String> buildJvmArguments = "buildSrc".equals(buildEnvironment.getBuildIdentifier().getRootDir().getName())
+        BuildIdentifier buildIdentifier = getBuildIdentifier(buildEnvironment);
+        List<String> buildJvmArguments = buildIdentifier == null || "buildSrc".equals(buildIdentifier.getRootDir().getName())
                                          ? ContainerUtil.emptyList()
                                          : buildEnvironment.getJava().getJvmArguments();
         merged = mergeJvmArgs(settings.getServiceDirectory(), buildJvmArguments, jvmArgs);
@@ -143,7 +147,7 @@ public class GradleExecutionHelper {
       }
     }
 
-    List<String> filteredArgs = ContainerUtil.newArrayList();
+    List<String> filteredArgs = new ArrayList<>();
     if (!settings.getArguments().isEmpty()) {
       String loggableArgs = StringUtil.join(obfuscatePasswordParameters(settings.getArguments()), " ");
       LOG.info("Passing command-line args to Gradle Tooling API: " + loggableArgs);
@@ -172,16 +176,37 @@ public class GradleExecutionHelper {
       operation.setJavaHome(new File(javaHome));
     }
 
-    String buildRootDir = buildEnvironment == null ? null : buildEnvironment.getBuildIdentifier().getRootDir().getPath();
+    String buildRootDir;
+    if (buildEnvironment == null) {
+      buildRootDir = null;
+    }
+    else {
+      BuildIdentifier buildIdentifier = getBuildIdentifier(buildEnvironment);
+      buildRootDir = buildIdentifier == null ? null : buildIdentifier.getRootDir().getPath();
+    }
     GradleProgressListener gradleProgressListener = new GradleProgressListener(listener, id, buildRootDir);
     operation.addProgressListener((ProgressListener)gradleProgressListener);
-    operation.addProgressListener((org.gradle.tooling.events.ProgressListener)gradleProgressListener);
+    operation.addProgressListener(gradleProgressListener,
+                                  OperationType.GENERIC,
+                                  OperationType.PROJECT_CONFIGURATION,
+                                  OperationType.TASK,
+                                  OperationType.TEST);
     operation.setStandardOutput(standardOutput);
     operation.setStandardError(standardError);
     InputStream inputStream = settings.getUserData(ExternalSystemRunConfiguration.RUN_INPUT_KEY);
     if (inputStream != null) {
       operation.setStandardInput(inputStream);
     }
+  }
+
+  @Nullable
+  private static BuildIdentifier getBuildIdentifier(@NotNull BuildEnvironment buildEnvironment) {
+    try {
+      return buildEnvironment.getBuildIdentifier();
+    }
+    catch (UnsupportedMethodException ignore) {
+    }
+    return null;
   }
 
   private static void setupEnvironment(@NotNull LongRunningOperation operation,
@@ -208,7 +233,7 @@ public class GradleExecutionHelper {
     operation.setEnvironmentVariables(effectiveEnvironment);
   }
 
-  public <T> T execute(@NotNull String projectPath, @Nullable GradleExecutionSettings settings, @NotNull Function<ProjectConnection, T> f) {
+  public <T> T execute(@NotNull String projectPath, @Nullable GradleExecutionSettings settings, @NotNull Function<? super ProjectConnection, ? extends T> f) {
 
     final String projectDir;
     final File projectPathFile = new File(projectPath);
@@ -239,7 +264,9 @@ public class GradleExecutionHelper {
     catch (Throwable e) {
       LOG.debug("Gradle execution error", e);
       Throwable rootCause = ExceptionUtil.getRootCause(e);
-      throw new ExternalSystemException(ExceptionUtil.getMessage(rootCause), e);
+      ExternalSystemException externalSystemException = new ExternalSystemException(ExceptionUtil.getMessage(rootCause), e);
+      externalSystemException.initCause(e);
+      throw externalSystemException;
     }
     finally {
       try {
@@ -311,7 +338,9 @@ public class GradleExecutionHelper {
     catch (Throwable e) {
       LOG.warn("Can't update wrapper", e);
       Throwable rootCause = ExceptionUtil.getRootCause(e);
-      throw new ExternalSystemException(ExceptionUtil.getMessage(rootCause));
+      ExternalSystemException externalSystemException = new ExternalSystemException(ExceptionUtil.getMessage(rootCause));
+      externalSystemException.initCause(e);
+      throw externalSystemException;
     }
     finally {
       settings.setRemoteProcessIdleTtlInMs(ttlInMs);
@@ -569,34 +598,40 @@ public class GradleExecutionHelper {
                                                      @NotNull ExternalSystemTaskId taskId,
                                                      @NotNull ExternalSystemTaskNotificationListener listener,
                                                      @Nullable CancellationTokenSource cancellationTokenSource) {
-    ModelBuilder<BuildEnvironment> modelBuilder = connection.model(BuildEnvironment.class);
-    if (cancellationTokenSource != null) {
-      modelBuilder.withCancellationToken(cancellationTokenSource.token());
-    }
-    // do not use connection.getModel methods since it doesn't allow to handle progress events
-    // and we can miss gradle tooling client side events like distribution download.
-    GradleProgressListener gradleProgressListener = new GradleProgressListener(listener, taskId);
-    modelBuilder.addProgressListener((ProgressListener)gradleProgressListener);
-    modelBuilder.addProgressListener((org.gradle.tooling.events.ProgressListener)gradleProgressListener);
-    modelBuilder.setStandardOutput(new OutputWrapper(listener, taskId, true));
-    modelBuilder.setStandardError(new OutputWrapper(listener, taskId, false));
+    BuildEnvironment buildEnvironment = null;
+    try {
+      ModelBuilder<BuildEnvironment> modelBuilder = connection.model(BuildEnvironment.class);
+      if (cancellationTokenSource != null) {
+        modelBuilder.withCancellationToken(cancellationTokenSource.token());
+      }
+      // do not use connection.getModel methods since it doesn't allow to handle progress events
+      // and we can miss gradle tooling client side events like distribution download.
+      GradleProgressListener gradleProgressListener = new GradleProgressListener(listener, taskId);
+      modelBuilder.addProgressListener((ProgressListener)gradleProgressListener);
+      modelBuilder.addProgressListener((org.gradle.tooling.events.ProgressListener)gradleProgressListener);
+      modelBuilder.setStandardOutput(new OutputWrapper(listener, taskId, true));
+      modelBuilder.setStandardError(new OutputWrapper(listener, taskId, false));
 
-    final BuildEnvironment buildEnvironment = modelBuilder.get();
-    if (LOG.isDebugEnabled()) {
-      try {
-        LOG.debug("Gradle version: " + buildEnvironment.getGradle().getGradleVersion());
-        LOG.debug("Gradle java home: " + buildEnvironment.getJava().getJavaHome());
-        LOG.debug("Gradle jvm arguments: " + buildEnvironment.getJava().getJvmArguments());
+      buildEnvironment = modelBuilder.get();
+      if (LOG.isDebugEnabled()) {
+        try {
+          LOG.debug("Gradle version: " + buildEnvironment.getGradle().getGradleVersion());
+          LOG.debug("Gradle java home: " + buildEnvironment.getJava().getJavaHome());
+          LOG.debug("Gradle jvm arguments: " + buildEnvironment.getJava().getJvmArguments());
+        }
+        catch (Throwable t) {
+          LOG.debug(t);
+        }
       }
-      catch (Throwable t) {
-        LOG.debug(t);
-      }
+    }
+    catch (Throwable t) {
+      LOG.debug(t);
     }
     return buildEnvironment;
   }
 
   private static void replaceTestCommandOptionWithInitScript(@NotNull List<String> args) {
-    Set<String> testIncludePatterns = ContainerUtil.newLinkedHashSet();
+    Set<String> testIncludePatterns = new LinkedHashSet<>();
     Iterator<String> it = args.iterator();
     while (it.hasNext()) {
       final String next = it.next();
@@ -709,7 +744,7 @@ public class GradleExecutionHelper {
                                              @NotNull ExternalSystemTaskNotificationListener listener,
                                              @NotNull List<String> extraJvmArgs) {
     ModelBuilder<T> result = connection.model(modelType);
-    prepare(result, id, settings, listener, extraJvmArgs, ContainerUtil.newArrayList(), connection);
+    prepare(result, id, settings, listener, extraJvmArgs, new ArrayList<>(), connection);
     return result;
   }
 

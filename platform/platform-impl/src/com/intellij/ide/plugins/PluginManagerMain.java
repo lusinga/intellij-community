@@ -42,7 +42,6 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.update.UiNotifyConnector;
 import com.intellij.xml.util.XmlStringUtil;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -74,10 +73,9 @@ public abstract class PluginManagerMain implements Disposable {
 
   public static final Logger LOG = Logger.getInstance(PluginManagerMain.class);
 
-  @NonNls private static final String TEXT_SUFFIX = "</body></html>";
-
-  @NonNls private static final String HTML_PREFIX = "<a href=\"";
-  @NonNls private static final String HTML_SUFFIX = "</a>";
+  private static final String TEXT_SUFFIX = "</body></html>";
+  private static final String HTML_PREFIX = "<a href=\"";
+  private static final String HTML_SUFFIX = "</a>";
 
   private boolean requireShutdown;
 
@@ -145,7 +143,7 @@ public abstract class PluginManagerMain implements Disposable {
       @Override
       protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Color bg = UIUtil.getTableBackground(false);
+        Color bg = UIUtil.getTableBackground(false, true);
         ((Graphics2D)g).setPaint(new GradientPaint(0, 0, ColorUtil.shift(bg, 1.4), 0, getHeight(), ColorUtil.shift(bg, 0.9)));
         g.fillRect(0,0, getWidth(), getHeight());
       }
@@ -271,10 +269,10 @@ public abstract class PluginManagerMain implements Disposable {
     return pluginsModel.dependent(pluginDescriptor);
   }
 
-  void modifyPluginsList(@NotNull List<IdeaPluginDescriptor> list) {
+  void modifyPluginsList(@NotNull List<? extends IdeaPluginDescriptor> list) {
     IdeaPluginDescriptor[] selected = pluginTable.getSelectedObjects();
     pluginsModel.updatePluginsList(list);
-    pluginsModel.filter(myFilter.getFilter().toLowerCase());
+    pluginsModel.filter(StringUtil.toLowerCase(myFilter.getFilter()));
     if (selected != null) {
       select(selected);
     }
@@ -302,12 +300,12 @@ public abstract class PluginManagerMain implements Disposable {
     setDownloadStatus(true);
 
     ApplicationManager.getApplication().executeOnPooledThread(() -> {
-      List<IdeaPluginDescriptor> list = ContainerUtil.newArrayList();
-      Map<String, String> errors = ContainerUtil.newLinkedHashMap();
+      List<IdeaPluginDescriptor> list = new ArrayList<>();
+      Map<String, String> errors = new LinkedHashMap<>();
       ProgressIndicator indicator = new EmptyProgressIndicator();
 
       List<String> hosts = RepositoryHelper.getPluginHosts();
-      Set<PluginId> unique = ContainerUtil.newHashSet();
+      Set<PluginId> unique = new HashSet<>();
       for (String host : hosts) {
         try {
           if (host == null || acceptHost(host)) {
@@ -358,7 +356,7 @@ public abstract class PluginManagerMain implements Disposable {
     });
   }
 
-  protected abstract void propagateUpdates(List<IdeaPluginDescriptor> list);
+  protected abstract void propagateUpdates(List<? extends IdeaPluginDescriptor> list);
 
   private void setDownloadStatus(boolean status) {
     pluginTable.setPaintBusy(status);
@@ -715,7 +713,7 @@ public abstract class PluginManagerMain implements Disposable {
       }
 
       public boolean isDisabled(@NotNull String pluginId) {
-        return PluginManagerCore.getDisabledPluginSet().contains(pluginId);
+        return PluginManagerCore.isDisabled(pluginId);
       }
     }
 
@@ -789,7 +787,7 @@ public abstract class PluginManagerMain implements Disposable {
     @Override
     public void filter() {
       getPluginTable().putClientProperty(SpeedSearchSupply.SEARCH_QUERY_KEY, getFilter());
-      pluginsModel.filter(getFilter().toLowerCase());
+      pluginsModel.filter(StringUtil.toLowerCase(getFilter()));
       TableUtil.ensureSelectionExists(getPluginTable());
     }
   }

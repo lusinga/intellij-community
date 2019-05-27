@@ -15,7 +15,6 @@ import com.intellij.openapi.components.BaseComponent;
 import com.intellij.openapi.components.ComponentConfig;
 import com.intellij.openapi.components.ComponentManager;
 import com.intellij.openapi.components.NamedComponent;
-import com.intellij.openapi.components.ex.ComponentManagerEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.extensions.PluginId;
@@ -49,7 +48,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public abstract class ComponentManagerImpl extends UserDataHolderBase implements ComponentManagerEx, Disposable {
+public abstract class ComponentManagerImpl extends UserDataHolderBase implements ComponentManager, Disposable {
   private static final Logger LOG = Logger.getInstance("#com.intellij.components.ComponentManager");
 
   private volatile MutablePicoContainer myPicoContainer;
@@ -197,7 +196,7 @@ public abstract class ComponentManagerImpl extends UserDataHolderBase implements
   public final <T> T getComponent(@NotNull Class<T> interfaceClass) {
     MutablePicoContainer picoContainer = getPicoContainer();
     ComponentAdapter adapter = picoContainer.getComponentAdapter(interfaceClass);
-    if (!(adapter instanceof ComponentConfigComponentAdapter)) {
+    if (adapter == null) {
       return null;
     }
 
@@ -214,10 +213,6 @@ public abstract class ComponentManagerImpl extends UserDataHolderBase implements
   @Nullable
   protected ProgressIndicator getProgressIndicator() {
     return ProgressManager.getInstance().getProgressIndicator();
-  }
-
-  @Override
-  public void initializeComponent(@NotNull Object component, boolean service) {
   }
 
   protected void handleInitComponentError(@NotNull Throwable ex, String componentClassName, PluginId pluginId) {
@@ -265,13 +260,19 @@ public abstract class ComponentManagerImpl extends UserDataHolderBase implements
 
   @NotNull
   public final <T> List<T> getComponentInstancesOfType(@NotNull Class<T> baseClass) {
+    return getComponentInstancesOfType(baseClass, false);
+  }
+
+  @NotNull
+  public final <T> List<T> getComponentInstancesOfType(@NotNull Class<T> baseClass, boolean createIfNotYet) {
     List<T> result = null;
     // we must use instances only from our adapter (could be service or extension point or something else)
     for (ComponentAdapter componentAdapter : ((DefaultPicoContainer)getPicoContainer()).getComponentAdapters()) {
       if (componentAdapter instanceof ComponentConfigComponentAdapter &&
           ReflectionUtil.isAssignable(baseClass, componentAdapter.getComponentImplementation())) {
+        ComponentConfigComponentAdapter adapter = (ComponentConfigComponentAdapter)componentAdapter;
         //noinspection unchecked
-        T instance = (T)((ComponentConfigComponentAdapter)componentAdapter).myInitializedComponentInstance;
+        T instance = (T)(createIfNotYet ? adapter.getComponentInstance(myPicoContainer) : (T)adapter.myInitializedComponentInstance);
         if (instance != null) {
           if (result == null) {
             result = new ArrayList<>();
@@ -505,7 +506,7 @@ public abstract class ComponentManagerImpl extends UserDataHolderBase implements
               indicator.checkCanceled();
               setProgressDuringInit(indicator);
             }
-            initializeComponent(instance, false);
+            initializeComponent(instance, null);
             if (instance instanceof BaseComponent) {
               ((BaseComponent)instance).initComponent();
             }

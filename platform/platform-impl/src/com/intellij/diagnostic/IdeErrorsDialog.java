@@ -13,6 +13,7 @@ import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.ide.plugins.PluginManagerMain;
 import com.intellij.ide.plugins.cl.PluginClassLoader;
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.idea.ActionsBundle;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
@@ -40,7 +41,6 @@ import com.intellij.ui.components.ComponentsKt;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ExceptionUtil;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -112,7 +112,7 @@ public class IdeErrorsDialog extends DialogWrapper implements MessagePoolListene
     }
 
     String rawValue = PropertiesComponent.getInstance().getValue(ACCEPTED_NOTICES_KEY, "");
-    myAcceptedNotices = ContainerUtil.newLinkedHashSet(StringUtil.split(rawValue, ACCEPTED_NOTICES_SEPARATOR));
+    myAcceptedNotices = new LinkedHashSet<>(StringUtil.split(rawValue, ACCEPTED_NOTICES_SEPARATOR));
 
     updateMessages();
     myIndex = selectMessage(defaultMessage);
@@ -279,13 +279,7 @@ public class IdeErrorsDialog extends DialogWrapper implements MessagePoolListene
           selectedMessage().setAssigneeId(developer == null ? null : developer.getId());
         }
       });
-      new ComboboxSpeedSearch(myAssigneeCombo) {
-        @Override
-        protected String getElementText(Object element) {
-          return element == null ? "" : ((Developer)element).getDisplayText();
-        }
-      };
-
+      myAssigneeCombo.setSwingPopup(false);
       myAssigneePanel = new JPanel();
       myAssigneePanel.add(new JBLabel("Assignee:"));
       myAssigneePanel.add(myAssigneeCombo);
@@ -460,6 +454,9 @@ public class IdeErrorsDialog extends DialogWrapper implements MessagePoolListene
     else if (t instanceof AbstractMethodError) {
       info.append(DiagnosticBundle.message("error.list.message.blame.unknown.plugin"));
     }
+    else if (t instanceof Freeze) {
+      info.append(DiagnosticBundle.message("error.list.message.blame.freeze"));
+    }
     else {
       info.append(DiagnosticBundle.message("error.list.message.blame.core", ApplicationNamesInfo.getInstance().getProductName()));
     }
@@ -542,7 +539,7 @@ public class IdeErrorsDialog extends DialogWrapper implements MessagePoolListene
   }
 
   private void updateAssigneePanel(MessageCluster cluster) {
-    if (cluster.submitter instanceof ITNReporter) {
+    if (cluster.submitter instanceof ITNReporter && !(cluster.first.getThrowable() instanceof Freeze)) {
       myAssigneePanel.setVisible(true);
       myAssigneeCombo.setEnabled(cluster.isUnsent());
       Integer assignee = cluster.first.getAssigneeId();
@@ -739,7 +736,7 @@ public class IdeErrorsDialog extends DialogWrapper implements MessagePoolListene
     private final AnAction myAnalyze;
 
     private AnalyzeAction(AnAction analyze) {
-      super(analyze.getTemplatePresentation().getText());
+      super(ActionsBundle.actionText(ActionManager.getInstance().getId(analyze)));
       putValue(Action.MNEMONIC_KEY, analyze.getTemplatePresentation().getMnemonic());
       myAnalyze = analyze;
     }
@@ -898,7 +895,7 @@ public class IdeErrorsDialog extends DialogWrapper implements MessagePoolListene
       return ((PicoPluginExtensionInitializationException)t).getPluginId();
     }
 
-    Set<String> visitedClassNames = ContainerUtil.newHashSet();
+    Set<String> visitedClassNames = new HashSet<>();
     for (StackTraceElement element : t.getStackTrace()) {
       if (element != null) {
         String className = element.getClassName();

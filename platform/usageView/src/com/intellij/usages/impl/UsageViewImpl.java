@@ -673,7 +673,7 @@ public class UsageViewImpl implements UsageViewEx {
       }
     });
 
-    TreeUtil.selectFirstNode(myTree);
+    TreeUtil.promiseSelectFirst(myTree);
     PopupHandler.installPopupHandler(myTree, IdeActions.GROUP_USAGE_VIEW_POPUP, ActionPlaces.USAGE_VIEW_POPUP);
 
     myTree.addTreeExpansionListener(new TreeExpansionListener() {
@@ -1823,7 +1823,7 @@ public class UsageViewImpl implements UsageViewEx {
         public Collection<String> getTextLinesToCopy() {
           final Node[] selectedNodes = getSelectedNodes();
           if (selectedNodes != null && selectedNodes.length > 0) {
-            ArrayList<String> lines = ContainerUtil.newArrayList();
+            ArrayList<String> lines = new ArrayList<>();
             for (Node node : selectedNodes) {
               lines.add(node.getText(UsageViewImpl.this));
             }
